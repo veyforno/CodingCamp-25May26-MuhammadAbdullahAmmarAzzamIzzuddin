@@ -1,248 +1,219 @@
-// === STATE ===
-let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
-let spendLimit = parseFloat(localStorage.getItem('spendLimit')) || 0;
-let chart = null;
+'use strict';
 
-// === HELPERS ===
-const formatRupiah = (val) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
-
-const parseAmount = (str) =>
-  parseFloat(str.replace(/\./g, '').replace(/,/g, '').replace(/[^0-9]/g, '')) || 0;
-
-const formatInput = (str) => {
-  const cleaned = str.replace(/[^0-9]/g, '');
-  if (!cleaned) return '';
-  return new Intl.NumberFormat('id-ID').format(Number(cleaned));
+const CATEGORY_ICONS = {
+  'Makanan': '🍔',
+  'Transportasi': '🚗',
+  'Hiburan': '🎬',
+  'Kesehatan': '🏥',
+  'Belanja': '🛍️',
+  'Pendidikan': '📚',
+  'Lainnya': '📦',
 };
 
-const formatDate = (iso) =>
-  new Date(iso).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+const CHART_COLORS = [
+  '#4f46e5', '#10b981', '#f59e0b', '#ef4444',
+  '#8b5cf6', '#06b6d4', '#ec4899',
+];
 
-// === FORMAT INPUT ON TYPE ===
-document.getElementById('itemAmount').addEventListener('input', function () {
-  const pos = this.selectionStart;
-  this.value = formatInput(this.value);
-});
+let transactions = JSON.parse(localStorage.getItem('bv_transactions') || '[]');
+let chartInstance = null;
 
-document.getElementById('spendLimit').addEventListener('input', function () {
-  this.value = formatInput(this.value);
-});
+function formatRp(num) {
+  return 'Rp ' + Math.round(num).toLocaleString('id-ID');
+}
 
-// === SAVE & LOAD ===
-const save = () => {
-  localStorage.setItem('transactions', JSON.stringify(transactions));
-  localStorage.setItem('spendLimit', spendLimit);
-};
+function saveData() {
+  localStorage.setItem('bv_transactions', JSON.stringify(transactions));
+}
 
-// === VALIDATE ===
-const validate = () => {
-  let valid = true;
-  const name = document.getElementById('itemName').value.trim();
-  const amount = document.getElementById('itemAmount').value.trim();
-  const category = document.getElementById('itemCategory').value;
+function getSortedTransactions() {
+  const order = document.getElementById('sortOrder').value;
+  const list = [...transactions];
+  if (order === 'newest')  return list.sort((a, b) => b.id - a.id);
+  if (order === 'oldest')  return list.sort((a, b) => a.id - b.id);
+  if (order === 'highest') return list.sort((a, b) => b.amount - a.amount);
+  if (order === 'lowest')  return list.sort((a, b) => a.amount - b.amount);
+  return list;
+}
 
-  document.getElementById('errName').textContent = '';
-  document.getElementById('errAmount').textContent = '';
-  document.getElementById('errCategory').textContent = '';
-  document.getElementById('itemName').classList.remove('error');
-  document.getElementById('itemAmount').classList.remove('error');
-  document.getElementById('itemCategory').classList.remove('error');
+function updateSummary() {
+  const total = transactions.reduce((s, t) => s + t.amount, 0);
+  const count = transactions.length;
+  const max   = count ? Math.max(...transactions.map(t => t.amount)) : 0;
+  const maxTx = transactions.find(t => t.amount === max);
+  const avg   = count ? total / count : 0;
 
-  if (!name) {
-    document.getElementById('errName').textContent = 'Nama item tidak boleh kosong';
-    document.getElementById('itemName').classList.add('error');
-    valid = false;
-  }
-  if (!amount || parseAmount(amount) <= 0) {
-    document.getElementById('errAmount').textContent = 'Jumlah harus lebih dari 0';
-    document.getElementById('itemAmount').classList.add('error');
-    valid = false;
-  }
-  if (!category) {
-    document.getElementById('errCategory').textContent = 'Pilih salah satu kategori';
-    document.getElementById('itemCategory').classList.add('error');
-    valid = false;
-  }
-  return valid;
-};
+  document.getElementById('totalAmount').textContent = formatRp(total);
+  document.getElementById('totalCount').textContent  = count + ' transaksi';
+  document.getElementById('maxAmount').textContent   = formatRp(max);
+  document.getElementById('maxCategory').textContent = maxTx ? maxTx.category : '—';
+  document.getElementById('avgAmount').textContent   = formatRp(avg);
+}
 
-// === ADD TRANSACTION ===
-document.getElementById('btnAdd').addEventListener('click', () => {
-  if (!validate()) return;
+function updateChart() {
+  const container = document.getElementById('chartContainer');
+  const legendEl  = document.getElementById('chartLegend');
 
-  const limitVal = document.getElementById('spendLimit').value.trim();
-  if (limitVal) spendLimit = parseAmount(limitVal);
-
-  const tx = {
-    id: Date.now().toString(),
-    name: document.getElementById('itemName').value.trim(),
-    amount: parseAmount(document.getElementById('itemAmount').value),
-    category: document.getElementById('itemCategory').value,
-    createdAt: new Date().toISOString(),
-  };
-
-  transactions.unshift(tx);
-  save();
-  render();
-
-  document.getElementById('itemName').value = '';
-  document.getElementById('itemAmount').value = '';
-  document.getElementById('itemCategory').value = '';
-});
-
-// === DELETE ===
-const deleteTransaction = (id) => {
-  transactions = transactions.filter(t => t.id !== id);
-  save();
-  render();
-};
-
-// === SORT ===
-const getSorted = () => {
-  const sort = document.getElementById('sortSelect').value;
-  const arr = [...transactions];
-  if (sort === 'oldest') return arr.reverse();
-  if (sort === 'highest') return arr.sort((a, b) => b.amount - a.amount);
-  if (sort === 'lowest') return arr.sort((a, b) => a.amount - b.amount);
-  if (sort === 'category') return arr.sort((a, b) => a.category.localeCompare(b.category));
-  return arr; // newest (default)
-};
-
-document.getElementById('sortSelect').addEventListener('change', render);
-
-// === RENDER TRANSACTIONS ===
-const renderList = () => {
-  const list = document.getElementById('txList');
-  const empty = document.getElementById('txEmpty');
-  const sorted = getSorted();
-  const total = transactions.reduce((a, t) => a + t.amount, 0);
-
-  if (sorted.length === 0) {
-    empty.style.display = 'flex';
-    list.innerHTML = '';
-    list.appendChild(empty);
+  if (!transactions.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <p>Belum ada data</p>
+        <p class="empty-sub">Tambahkan transaksi untuk melihat grafik</p>
+      </div>`;
+    legendEl.innerHTML = '';
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
     return;
   }
 
-  empty.style.display = 'none';
-  list.innerHTML = '';
-
-  sorted.forEach(t => {
-    const isOver = spendLimit > 0 && t.amount > spendLimit;
-    const div = document.createElement('div');
-    div.className = 'tx-item' + (isOver ? ' over-limit' : '');
-    div.innerHTML = `
-      <div class="tx-left">
-        <span class="tx-name">${t.name}</span>
-        <div class="tx-meta">
-          <span class="tx-cat cat-${t.category.toLowerCase()}">${t.category}</span>
-          <span class="tx-date">${formatDate(t.createdAt)}</span>
-          ${isOver ? '<span style="font-size:0.7rem;color:#f59e0b;">⚠️ Melebihi batas</span>' : ''}
-        </div>
-      </div>
-      <div class="tx-right">
-        <span class="tx-amount">${formatRupiah(t.amount)}</span>
-        <button class="btn-delete" onclick="deleteTransaction('${t.id}')" aria-label="Hapus">🗑️</button>
-      </div>
-    `;
-    list.appendChild(div);
+  const totals = {};
+  transactions.forEach(t => {
+    totals[t.category] = (totals[t.category] || 0) + t.amount;
   });
-};
+  const labels = Object.keys(totals);
+  const data   = Object.values(totals);
+  const colors = labels.map((_, i) => CHART_COLORS[i % CHART_COLORS.length]);
 
-// === RENDER BALANCE ===
-const renderBalance = () => {
-  const total = transactions.reduce((a, t) => a + t.amount, 0);
-  document.getElementById('totalBalance').textContent = formatRupiah(total);
-  document.getElementById('txCount').textContent = `${transactions.length} transaksi`;
+  if (!document.getElementById('bvChart')) {
+    container.innerHTML = '<canvas id="bvChart" role="img" aria-label="Pie chart distribusi pengeluaran per kategori"></canvas>';
+  }
 
-  const limitEl = document.getElementById('limitIndicator');
-  if (spendLimit > 0 && total > spendLimit) {
-    limitEl.style.display = 'inline';
+  const canvas = document.getElementById('bvChart');
+
+  if (chartInstance) {
+    chartInstance.data.labels   = labels;
+    chartInstance.data.datasets[0].data            = data;
+    chartInstance.data.datasets[0].backgroundColor = colors;
+    chartInstance.update();
   } else {
-    limitEl.style.display = 'none';
+    chartInstance = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data,
+          backgroundColor: colors,
+          borderWidth: 3,
+          borderColor: '#ffffff',
+          hoverOffset: 8,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + formatRp(ctx.parsed),
+            },
+          },
+        },
+      },
+    });
   }
-};
 
-// === RENDER CHART ===
-const renderChart = () => {
-  const ctx = document.getElementById('pieChart').getContext('2d');
-  const emptyEl = document.getElementById('chartEmpty');
+  legendEl.innerHTML = labels.map((lbl, i) =>
+    `<span class="legend-item">
+      <span class="legend-dot" style="background:${colors[i]}"></span>
+      ${CATEGORY_ICONS[lbl] || '📦'} ${lbl}
+    </span>`
+  ).join('');
+}
 
-  const totals = { Food: 0, Transport: 0, Fun: 0 };
-  transactions.forEach(t => { if (totals[t.category] !== undefined) totals[t.category] += t.amount; });
+function renderTransactions() {
+  const list = getSortedTransactions();
+  const el   = document.getElementById('transactionList');
 
-  const labels = Object.keys(totals).filter(k => totals[k] > 0);
-  const data = labels.map(k => totals[k]);
-
-  if (data.length === 0) {
-    emptyEl.style.display = 'block';
-    document.getElementById('pieChart').style.display = 'none';
-    if (chart) { chart.destroy(); chart = null; }
+  if (!list.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🧾</div>
+        <p>Belum ada transaksi</p>
+        <p class="empty-sub">Tambahkan pengeluaran pertama Anda</p>
+      </div>`;
     return;
   }
 
-  emptyEl.style.display = 'none';
-  document.getElementById('pieChart').style.display = 'block';
+  el.innerHTML = list.map(t => {
+    const icon    = CATEGORY_ICONS[t.category] || '📦';
+    const date    = new Date(t.id).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' });
+    const hasBudget = t.budget > 0;
+    const pct     = hasBudget ? Math.min((t.amount / t.budget) * 100, 100) : 0;
+    const isOver  = hasBudget && t.amount > t.budget;
+    const barHtml = hasBudget ? `
+      <div class="transaction-budget-bar">
+        <div class="transaction-budget-fill ${isOver ? 'over' : ''}" style="width:${pct}%"></div>
+      </div>` : '';
 
-  const colors = { Food: '#f97316', Transport: '#8b5cf6', Fun: '#ec4899' };
+    return `
+      <div class="transaction-item" data-id="${t.id}">
+        <div class="transaction-icon">${icon}</div>
+        <div class="transaction-info">
+          <div class="transaction-name">${t.name}</div>
+          <div class="transaction-meta">${t.category} · ${date}${hasBudget ? ` · Batas: ${formatRp(t.budget)}` : ''}</div>
+          ${barHtml}
+        </div>
+        <div class="transaction-amount">${formatRp(t.amount)}</div>
+        <button class="transaction-delete" data-id="${t.id}" aria-label="Hapus transaksi">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>`;
+  }).join('');
+}
 
-  if (chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: labels.map(l => colors[l]),
-        borderWidth: 0,
-        hoverOffset: 8,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      cutout: '60%',
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: {
-            color: getComputedStyle(document.documentElement).getPropertyValue('--text') || '#1a1d2e',
-            font: { family: 'DM Sans', size: 12 },
-            padding: 16,
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` ${formatRupiah(ctx.raw)}`
-          }
-        }
-      }
-    }
-  });
-};
+function render() {
+  updateSummary();
+  updateChart();
+  renderTransactions();
+}
 
-// === RENDER ALL ===
-const render = () => {
-  renderBalance();
-  renderList();
-  renderChart();
-};
+document.getElementById('btnAdd').addEventListener('click', () => {
+  const name     = document.getElementById('itemName').value.trim();
+  const amount   = parseFloat(document.getElementById('itemAmount').value);
+  const category = document.getElementById('itemCategory').value;
+  const budget   = parseFloat(document.getElementById('itemBudget').value) || 0;
+  const warning  = document.getElementById('budgetWarning');
 
-// === DARK MODE ===
-const themeToggle = document.getElementById('themeToggle');
-const savedTheme = localStorage.getItem('theme') || 'light';
-document.documentElement.setAttribute('data-theme', savedTheme);
-themeToggle.querySelector('.theme-icon').textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+  if (!name || isNaN(amount) || amount <= 0 || !category) {
+    alert('Nama item, jumlah, dan kategori wajib diisi.');
+    return;
+  }
 
-themeToggle.addEventListener('click', () => {
-  const current = document.documentElement.getAttribute('data-theme');
-  const next = current === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  localStorage.setItem('theme', next);
-  themeToggle.querySelector('.theme-icon').textContent = next === 'dark' ? '☀️' : '🌙';
-  render(); // re-render chart with correct colors
+  if (budget > 0 && amount > budget) {
+    warning.classList.remove('hidden');
+  } else {
+    warning.classList.add('hidden');
+  }
+
+  transactions.push({ id: Date.now(), name, amount, category, budget });
+  saveData();
+  render();
+
+  document.getElementById('itemName').value     = '';
+  document.getElementById('itemAmount').value   = '';
+  document.getElementById('itemCategory').value = '';
+  document.getElementById('itemBudget').value   = '';
 });
 
-// === INIT ===
+document.getElementById('transactionList').addEventListener('click', e => {
+  const btn = e.target.closest('.transaction-delete');
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  transactions = transactions.filter(t => t.id !== id);
+  saveData();
+  render();
+});
+
+document.getElementById('sortOrder').addEventListener('change', renderTransactions);
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  if (confirm('Hapus semua transaksi? Tindakan ini tidak bisa dibatalkan.')) {
+    transactions = [];
+    saveData();
+    render();
+  }
+});
+
 render();
