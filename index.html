@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Expense & Budget Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">💸</span>
+        <span class="logo-text">BudgetViz</span>
+      </div>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+        <span class="theme-icon">🌙</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- BALANCE CARD -->
+    <section class="balance-section">
+      <div class="balance-card">
+        <p class="balance-label">Total Pengeluaran</p>
+        <h1 class="balance-amount" id="totalBalance">Rp 0</h1>
+        <div class="balance-meta">
+          <span id="txCount">0 transaksi</span>
+          <span class="limit-indicator" id="limitIndicator" style="display:none">⚠️ Melebihi batas!</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="content-grid">
+
+      <!-- LEFT COLUMN -->
+      <div class="left-col">
+
+        <!-- FORM -->
+        <section class="card form-card">
+          <h2 class="card-title">Catat Pengeluaran</h2>
+          <div class="form-group">
+            <label for="itemName">Nama Item</label>
+            <input type="text" id="itemName" placeholder="Contoh: Tiket Bioskop" />
+            <span class="error-msg" id="errName"></span>
+          </div>
+          <div class="form-group">
+            <label for="itemAmount">Jumlah (Rp)</label>
+            <input type="text" id="itemAmount" placeholder="Contoh: 100.000" />
+            <span class="error-msg" id="errAmount"></span>
+          </div>
+          <div class="form-group">
+            <label for="itemCategory">Kategori</label>
+            <select id="itemCategory">
+              <option value="">Pilih Kategori</option>
+              <option value="Food">🍔 Makan & Minum</option>
+              <option value="Transport">🚗 Transportasi</option>
+              <option value="Fun">🎉 Hiburan</option>
+            </select>
+            <span class="error-msg" id="errCategory"></span>
+          </div>
+          <div class="form-group">
+            <label for="spendLimit">Batas Pengeluaran (Rp) — Opsional</label>
+            <input type="text" id="spendLimit" placeholder="Contoh: 500.000" />
+          </div>
+          <button class="btn-add" id="btnAdd">+ Tambah Transaksi</button>
+        </section>
+
+        <!-- CHART -->
+        <section class="card chart-card">
+          <h2 class="card-title">Distribusi Pengeluaran</h2>
+          <div class="chart-wrapper">
+            <canvas id="pieChart"></canvas>
+            <p class="chart-empty" id="chartEmpty">Belum ada data</p>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="right-col">
+        <section class="card list-card">
+          <div class="list-header">
+            <h2 class="card-title">Riwayat Transaksi</h2>
+            <select class="sort-select" id="sortSelect">
+              <option value="newest">Terbaru</option>
+              <option value="oldest">Terlama</option>
+              <option value="highest">Terbesar</option>
+              <option value="lowest">Terkecil</option>
+              <option value="category">Kategori</option>
+            </select>
+          </div>
+          <div class="tx-list" id="txList">
+            <div class="tx-empty" id="txEmpty">
+              <span>🧾</span>
+              <p>Belum ada transaksi</p>
+              <small>Tambahkan pengeluaran pertama Anda</small>
+            </div>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
